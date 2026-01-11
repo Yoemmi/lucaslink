@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import Ui2Styles from "@/components/ui2/Ui2Styles";
-
 import Navbar from "@/components/ui2/landing/Navbar";
 import Hero from "@/components/ui2/landing/Hero";
 import Trust from "@/components/ui2/landing/Trust";
@@ -16,24 +15,23 @@ import Footer from "@/components/ui2/landing/Footer";
 export default function LandingPage() {
   const router = useRouter();
 
-  // Ã¢Å“â€¦ REAL auth routes (Firebase)
   const goLogin = () => router.push("/login");
   const goSignup = () => router.push("/register");
 
   return (
-    <div className="min-h-screen bg-[#F6F7FB]">
+    <div className="min-h-screen bg-white">
       <Ui2Styles />
       <Navbar onLoginClick={goLogin} onSignupClick={goSignup} />
       <main>
-        <Hero onSignupClick={goSignup} onStartClick={goSignup} />
+        <Hero onStartClick={goSignup} />
         <Trust />
         <Features />
         <HowItWorks />
-        <Pricing onSignupClick={goSignup} onPlanClick={() => goSignup()} />
+        <Pricing onPlanClick={goSignup} />
         <FAQ />
-        <CTAFinal onSignupClick={goSignup} onLoginClick={goLogin} />
-        <Footer />
+        <CTAFinal onStartClick={goSignup} />
       </main>
+      <Footer />
     </div>
   );
 }
