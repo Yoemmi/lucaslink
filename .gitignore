@@ -42,3 +42,4 @@ next-env.d.ts
 package.json.bak_*
 src/app/debug-profile/page.tsx.bak_*
 .env.production.local
+.env.production.local
