@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-
 export const dynamic = "force-dynamic";
 
 export default function LoginRedirect({
@@ -8,9 +7,7 @@ export default function LoginRedirect({
   searchParams: { next?: string };
 }) {
   const next = searchParams?.next
-    ? `?next=${encodeURIComponent(searchParams.next)}`
+    ? ?next=\
     : "";
-
-  // Auto redirect al UI bonito
-  redirect(`${next}`);
+  redirect($loginTarget\);
 }
