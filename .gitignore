@@ -45,3 +45,4 @@ src/app/debug-profile/page.tsx.bak_*
 .env.production.local
 src/app/login/page.tsx.bak_*
 src/app/register/page.tsx.bak_*
+*.bak_*
