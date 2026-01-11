@@ -1,29 +1,29 @@
 {
-  "name": "biolink",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "prebuild": "node -e \"const fs=require('fs'); fs.rmSync('.next',{recursive:true,force:true}); fs.rmSync('.turbo',{recursive:true,force:true});\""
-  },
-  "dependencies": {
-    "firebase": "^12.7.0",
-    "lucide-react": "^0.562.0",
-    "next": "16.1.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.1",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
+    "name":  "biolink",
+    "version":  "0.1.0",
+    "private":  true,
+    "scripts":  {
+                    "dev":  "next dev",
+                    "build":  "next build",
+                    "start":  "next start",
+                    "lint":  "eslint",
+                    "prebuild":  "node tools/apphosting-env.cjs \u0026\u0026 node -e \"const fs=require(\u0027fs\u0027); fs.rmSync(\u0027.next\u0027,{recursive:true,force:true}); fs.rmSync(\u0027.turbo\u0027,{recursive:true,force:true});\""
+                },
+    "dependencies":  {
+                         "firebase":  "^12.7.0",
+                         "lucide-react":  "^0.562.0",
+                         "next":  "16.1.1",
+                         "react":  "19.2.3",
+                         "react-dom":  "19.2.3"
+                     },
+    "devDependencies":  {
+                            "@tailwindcss/postcss":  "^4",
+                            "@types/node":  "^20",
+                            "@types/react":  "^19",
+                            "@types/react-dom":  "^19",
+                            "eslint":  "^9",
+                            "eslint-config-next":  "16.1.1",
+                            "tailwindcss":  "^4",
+                            "typescript":  "^5"
+                        }
 }
