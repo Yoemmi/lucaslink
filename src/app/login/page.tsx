@@ -2,14 +2,13 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default function LoginRedirect({
+export default function Page({
   searchParams,
 }: {
   searchParams?: { next?: string };
 }) {
   const next = searchParams?.next
-    ? `?next=${encodeURIComponent(searchParams.next)}`
+    ? "?next=" + encodeURIComponent(searchParams.next)
     : "";
-
-  redirect("" + next);
+  redirect("/ui/login2" + next);
 }
