@@ -43,3 +43,5 @@ package.json.bak_*
 src/app/debug-profile/page.tsx.bak_*
 .env.production.local
 .env.production.local
+src/app/login/page.tsx.bak_*
+src/app/register/page.tsx.bak_*
