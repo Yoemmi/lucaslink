@@ -32,3 +32,17 @@ body {
   }
 }
 
+
+/* LucasLink Theme Vars (se sobre-escriben por perfil en /[username]) */
+:root{
+  --lx-bg:#f6f7f9;
+  --lx-bg2:#dbeafe;
+  --lx-card:rgba(255,255,255,0.92);
+  --lx-text:#0b0b0b;
+  --lx-muted:#6b7280;
+  --lx-border:rgba(0,0,0,0.10);
+  --lx-accent:#111827;
+  --lx-btn:#111827;
+  --lx-btnText:#ffffff;
+  --lx-radius:18px;
+}

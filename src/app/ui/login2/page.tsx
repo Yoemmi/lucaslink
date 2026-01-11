@@ -1,0 +1,23 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import Ui2Styles from "@/components/ui2/Ui2Styles";
+import Login from "@/components/ui2/landing/Login";
+
+export default function Login2Page() {
+  const router = useRouter();
+
+  return (
+    <div className="min-h-screen bg-[#F6F7FB]">
+      <Ui2Styles />
+      <Login
+        mode="login"
+        onBack={() => router.push("/ui/home2")}
+        onSwitchMode={(m) => {
+          if (m === "signup") router.push("/ui/register2");
+        }}
+        onLoginSuccess={() => router.push("/ui/dashboard2")}
+      />
+    </div>
+  );
+}

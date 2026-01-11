@@ -1,281 +1,640 @@
-﻿"use client";
-
-import React, { useMemo, useState } from "react";
+"use client";
+import PhonePreview from "@/components/PhonePreview";
 import Link from "next/link";
-import type { CreatorProfile } from "@/lib/types";
-import { getProfile } from "@/lib/demoProfiles";
-import { clearProfileOverride, saveProfileOverride } from "@/lib/profileStore";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 
-const BRAND = "#11b718";
+type LinkItem = { title: string; url: string };
+type ProductItem = { title: string; price?: number; buyUrl?: string };
 
-function newId() {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return Math.random().toString(36).slice(2);
-  }
+function normalizeUrl(u: string) {
+  const x = (u ?? "").trim();
+  if (!x) return "";
+  if (x.toLowerCase().startsWith("javascript:")) return "";
+  if (x.startsWith("http://") || x.startsWith("https://")) return x;
+  return `https://${x}`;
+}
+
+function slugUsername(s: string) {
+  return (s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9._-]/g, "");
+}
+
+function PhoneFrame({ username }: { username: string }) {
+  return (
+    <div className="lg:sticky lg:top-8">
+      <div className="mx-auto w-[320px] rounded-[46px] bg-black p-3 shadow-xl">
+        <div className="overflow-hidden rounded-[38px] bg-white">
+          <PhonePreview profile={{
+  username: String(username ?? "preview").trim().toLowerCase(),
+  displayName: (displayName as any),
+  bio: (bio as any),
+  photoURL: (photoURL as any),
+  links: (links as any),
+  products: (products as any),
+  theme: (theme as any),
+}} />
+        </div>
+      </div>
+      <div className="mt-3 text-center text-xs text-neutral-500">Vista previa: /{username}</div>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
-  const [username, setUsername] = useState<"santi" | "demo">("santi");
-  const base = useMemo(() => getProfile(username)!, [username]);
+  const router = useRouter();
 
-  const [profile, setProfile] = useState<CreatorProfile>(base);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
 
-  // cuando cambias de user, reinicia el editor con el demo
-  React.useEffect(() => {
-    setProfile(base);
-  }, [base]);
+  const [username, setUsername] = useState<string | null>(null);
 
-  const save = () => {
-    saveProfileOverride(profile);
-    alert("✅ Guardado. Abre /u/" + profile.username + " y refresca.");
-  };
+  // create username UI
+  const [unameInput, setUnameInput] = useState("");
+  const [nameInput, setNameInput] = useState("");
 
-  const reset = () => {
-    clearProfileOverride(profile.username);
-    setProfile(base);
-    alert("🧹 Reseteado. Refresca /u/" + profile.username);
-  };
+  // profile editor
+  const [displayName, setDisplayName] = useState("");
+  const [bio, setBio] = useState("");
+  const [published, setPublished] = useState(true);
+
+  const [links, setLinks] = useState<LinkItem[]>([]);
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [prodTitle, setProdTitle] = useState("");
+  const [prodPrice, setProdPrice] = useState("");
+  const [prodBuyUrl, setProdBuyUrl] = useState("");
+
+  // THEME
+  const [themeBg, setThemeBg] = useState("#f6f7f9");
+  const [themeUseGradient, setThemeUseGradient] = useState(false);
+  const [themeBg2, setThemeBg2] = useState("#dbeafe");
+  const [themeBgImage, setThemeBgImage] = useState("");
+
+  const [themeCard, setThemeCard] = useState("#ffffff");
+  const [themeCardOpacity, setThemeCardOpacity] = useState(1);
+
+  const [themeText, setThemeText] = useState("#0b0b0b");
+  const [themeMuted, setThemeMuted] = useState("#6b7280");
+  const [themeAccent, setThemeAccent] = useState("#111827");
+  const [themeButton, setThemeButton] = useState("#111827");
+  const [themeButtonText, setThemeButtonText] = useState("#ffffff");
+  const [themeRadius, setThemeRadius] = useState(18);
+
+  
+  function setDefaultTheme() {
+  setThemeBg("#f6f7f9");
+  setThemeUseGradient(false);
+  setThemeBg2("#dbeafe");
+  setThemeBgImage("");
+
+  setThemeCard("#ffffff");
+  setThemeCardOpacity(1);
+
+  setThemeText("#0b0b0b");
+  setThemeMuted("#6b7280");
+  setThemeAccent("#111827");
+
+  setThemeButton("#111827");
+  setThemeButtonText("#ffffff");
+
+  setThemeRadius(18);
+
+  setErr(null);
+  setMsg("DiseÃƒÂ±o por defecto aplicado Ã¢Å“â€¦ (pulsa Guardar cambios para guardarlo)");
+}
+
+  function confirmDefaultTheme() {
+  const ok = confirm("¿Aplicar diseño por defecto? Esto restablecerá colores, fondo y bordes. Los cambios no guardados del tema se perderán.");
+  if (!ok) return;
+  setDefaultTheme();
+}
+const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const profileHref = useMemo(() => (username ? `/${username}` : null), [username]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      if (!u) {
+        setLoading(false);
+        router.push("/login");
+        return;
+      }
+
+      try {
+        // users/{uid} -> { username }
+        const uRef = doc(db, "users", u.uid);
+        const uSnap = await getDoc(uRef);
+        const uname = uSnap.exists() ? (uSnap.data() as any).username : null;
+
+        if (uname) {
+          setUsername(String(uname));
+          await loadProfileForUsername(String(uname), u);
+        }
+      } catch (e: any) {
+        setErr(e?.message || "Error cargando datos");
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsub();
+  }, [router]);
+
+  async function loadProfileForUsername(uname: string, u: User) {
+    const pRef = doc(db, "profiles", uname);
+    const pSnap = await getDoc(pRef);
+    if (!pSnap.exists()) return;
+
+    const data = pSnap.data() as any;
+
+    setDisplayName(String(data.displayName ?? uname));
+    setBio(String(data.bio ?? ""));
+    setPublished(Boolean(data.published ?? true));
+
+    setLinks(Array.isArray(data.links) ? data.links : []);
+    setProducts(Array.isArray(data.products) ? data.products : []);
+
+    const t = (data.theme || data.tema || {}) as any;
+    setThemeBg(String(t.bg ?? "#f6f7f9"));
+    setThemeUseGradient(Boolean(t.useGradient ?? false));
+    setThemeBg2(String(t.bg2 ?? "#dbeafe"));
+    setThemeBgImage(String(t.bgImage ?? ""));
+
+    setThemeCard(String(t.card ?? "#ffffff"));
+    const op = Number(t.cardOpacity);
+    setThemeCardOpacity(Number.isFinite(op) ? Math.max(0, Math.min(1, op)) : 1);
+
+    setThemeText(String(t.text ?? "#0b0b0b"));
+    setThemeMuted(String(t.muted ?? "#6b7280"));
+    setThemeAccent(String(t.accent ?? "#111827"));
+    setThemeButton(String(t.button ?? "#111827"));
+    setThemeButtonText(String(t.buttonText ?? "#ffffff"));
+
+    const r = Number(t.radius);
+    setThemeRadius(Number.isFinite(r) ? Math.max(12, Math.min(32, r)) : 18);
+  }
+
+  async function createUsername() {
+    if (!user) return;
+
+    setErr(null);
+    setMsg(null);
+
+    const desired = slugUsername(unameInput);
+    if (!desired || desired.length < 3) {
+      setErr("El username debe tener al menos 3 caracteres (letras/nÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºmeros/._-).");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await runTransaction(db, async (tx) => {
+        const unameDoc = doc(db, "usernames", desired);
+        const unameSnap = await tx.get(unameDoc);
+        if (unameSnap.exists()) {
+          throw new Error("Ese username ya estÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ ocupado.");
+        }
+
+        // guardar mapping global
+        tx.set(unameDoc, { uid: user.uid, createdAt: serverTimestamp() });
+
+        // guardar en users/{uid}
+        const userDoc = doc(db, "users", user.uid);
+        tx.set(
+          userDoc,
+          {
+            username: desired,
+            displayName: user.displayName || nameInput || desired,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // crear profiles/{username}
+        const profileDoc = doc(db, "profiles", desired);
+        tx.set(
+          profileDoc,
+          {
+            ownerUid: user.uid,
+            username: desired,
+            displayName: (nameInput || user.displayName || desired).trim(),
+            bio: "",
+            photoURL: user.photoURL || "",
+            published: true,
+            links: [],
+            products: [],
+            theme: {
+              bg: "#f6f7f9",
+              useGradient: false,
+              bg2: "#dbeafe",
+              bgImage: "",
+              card: "#ffffff",
+              cardOpacity: 1,
+              text: "#0b0b0b",
+              muted: "#6b7280",
+              accent: "#111827",
+              button: "#111827",
+              buttonText: "#ffffff",
+              radius: 18,
+            },
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+
+      setUsername(desired);
+      setDisplayName((nameInput || user.displayName || desired).trim());
+      setBio("");
+      setPublished(true);
+      setLinks([]);
+      setProducts([]);
+
+      setMsg("Perfil creado ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦");
+    } catch (e: any) {
+      setErr(e?.message || "No se pudo crear el perfil");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function addLink() {
+    const title = linkTitle.trim();
+    const url = normalizeUrl(linkUrl);
+    if (!title || !url) return;
+
+    setLinks((prev) => [...prev, { title, url }]);
+    setLinkTitle("");
+    setLinkUrl("");
+  }
+
+  function removeLink(i: number) {
+    setLinks((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function addProduct() {
+    const title = prodTitle.trim();
+    if (!title) return;
+
+    const out: ProductItem = { title };
+
+    const n = Number(prodPrice);
+    if (prodPrice.trim() && Number.isFinite(n)) out.price = n;
+
+    const b = normalizeUrl(prodBuyUrl);
+    if (b) out.buyUrl = b;
+
+    setProducts((prev) => [...prev, out]);
+    setProdTitle("");
+    setProdPrice("");
+    setProdBuyUrl("");
+  }
+
+  function removeProduct(i: number) {
+    setProducts((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function save() {
+    if (!user || !username) return;
+
+    setErr(null);
+    setMsg(null);
+    setBusy(true);
+
+    try {
+      const safeLinks = links
+        .map((l) => ({ title: (l.title ?? "").trim(), url: normalizeUrl(l.url ?? "") }))
+        .filter((l) => l.title && l.url);
+
+      const safeProducts = products
+        .map((p) => {
+          const title = (p.title ?? "").trim();
+          const out: any = { title };
+          if (typeof p.price === "number") out.price = p.price;
+          const buyUrl = normalizeUrl((p as any).buyUrl ?? "");
+          if (buyUrl) out.buyUrl = buyUrl;
+          return out;
+        })
+        .filter((p) => p.title);
+
+      const pRef = doc(db, "profiles", username);
+      await setDoc(
+        pRef,
+        {
+          ownerUid: user.uid,
+          username,
+          displayName: displayName.trim() || username,
+          bio,
+          photoURL: user.photoURL || "",
+          published: !!published,
+          links: safeLinks,
+          products: safeProducts,
+          theme: {
+            bg: themeBg,
+            useGradient: themeUseGradient,
+            bg2: themeBg2,
+            bgImage: themeBgImage.trim(),
+            card: themeCard,
+            cardOpacity: Math.max(0, Math.min(1, Number(themeCardOpacity))),
+            text: themeText,
+            muted: themeMuted,
+            accent: themeAccent,
+            button: themeButton,
+            buttonText: themeButtonText,
+            radius: Math.max(12, Math.min(32, Number(themeRadius))),
+          },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      setMsg("Guardado ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦");
+    } catch (e: any) {
+      setErr(e?.message || "Error guardando en Firestore");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading) return <div className="p-6">Cargando...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F7F8FA]">
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="flex items-center justify-between gap-3">
+    <div className="mx-auto max-w-6xl px-4 py-10 lg:grid lg:grid-cols-[1fr_420px] lg:gap-10">
+      <div>
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-black text-[#0B1220]">Dashboard (Editor)</h1>
-            <p className="text-sm text-gray-600">
-              Edita y guarda en tu navegador (localStorage). Luego lo conectamos a Firebase.
-            </p>
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <div className="text-xs text-neutral-500">UID: {user?.uid}</div>
           </div>
-
-          <Link
-            href={`/u/${username}`}
-            className="rounded-2xl px-4 py-3 text-sm font-extrabold text-white shadow-sm"
-            style={{ backgroundColor: BRAND }}
-          >
-            Ver perfil /u/{username}
-          </Link>
+          <button
+  type="button"
+  onClick={confirmDefaultTheme}
+  className="mb-2 w-full rounded-xl border py-2 font-medium"
+>
+  DiseÃ±o por defecto
+</button>
+<button className="rounded-xl border px-3 py-2 text-sm" onClick={() => signOut(auth)}>
+            Salir
+          </button>
         </div>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          {/* Editor */}
-          <div className="rounded-3xl border bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-xs font-black text-gray-700">Editar usuario:</label>
-              <select
-                value={username}
-                onChange={(e) => setUsername(e.target.value as any)}
-                className="rounded-xl border px-3 py-2 text-sm font-semibold"
+        {err ? (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>
+        ) : null}
+        {msg ? (
+          <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">{msg}</div>
+        ) : null}
+
+        {!username ? (
+          <div className="mt-6 rounded-2xl border p-5">
+            <h2 className="text-lg font-semibold">Crea tu perfil</h2>
+            <p className="mt-1 text-sm text-neutral-600">Tu URL serÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡: /tuusername</p>
+
+            <div className="mt-4 space-y-3">
+              <input
+                className="w-full rounded-xl border px-3 py-2"
+                placeholder="Username (ej: sulam)"
+                value={unameInput}
+                onChange={(e) => setUnameInput(e.target.value)}
+              />
+              <input
+                className="w-full rounded-xl border px-3 py-2"
+                placeholder="Nombre pÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºblico (opcional)"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+              />
+              <button
+                disabled={busy}
+                onClick={createUsername}
+                className="w-full rounded-xl bg-black py-2 font-medium text-white disabled:opacity-60"
               >
-                <option value="santi">santi</option>
-                <option value="demo">demo</option>
-              </select>
+                {busy ? "Creando..." : "Crear perfil"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mt-6 rounded-2xl border p-5 flex items-center justify-between">
+              <div>
+                <div className="text-sm text-neutral-500">Tu URL pÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºblica</div>
+                <div className="text-lg font-semibold">/{username}</div>
+              </div>
+              {profileHref ? (
+                <Link className="rounded-xl bg-black px-4 py-2 text-sm text-white" href={profileHref}>
+                  Ver perfil
+                </Link>
+              ) : null}
+            </div>
 
-              <div className="ml-auto flex gap-2">
-                <button
-                  onClick={reset}
-                  className="rounded-2xl border px-4 py-2 text-sm font-extrabold text-gray-800 hover:bg-gray-50"
-                >
-                  Reset
-                </button>
-                <button
-                  onClick={save}
-                  className="rounded-2xl px-4 py-2 text-sm font-extrabold text-white"
-                  style={{ backgroundColor: BRAND }}
-                >
-                  Guardar
-                </button>
+            <div className="mt-6 rounded-2xl border p-5 space-y-4">
+              <h2 className="text-lg font-semibold">Perfil</h2>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Nombre pÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºblico</label>
+                <input className="w-full rounded-xl border px-3 py-2" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Bio</label>
+                <textarea className="w-full rounded-xl border px-3 py-2 min-h-[110px]" value={bio} onChange={(e) => setBio(e.target.value)} />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
+                Publicado
+              </label>
+            </div>
+
+            <div className="mt-6 rounded-2xl border p-5 space-y-4">
+              <h2 className="text-lg font-semibold">Links</h2>
+
+              <div className="grid gap-2">
+                {links.map((l, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{l.title}</div>
+                      <div className="text-xs text-neutral-500 truncate">{l.url}</div>
+                    </div>
+                    <button className="text-sm underline" onClick={() => removeLink(i)}>Quitar</button>
+                  </div>
+                ))}
+                {links.length === 0 ? <div className="text-sm text-neutral-600">AÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âºn no tienes links.</div> : null}
+              </div>
+
+              <div className="grid gap-2">
+                <input className="w-full rounded-xl border px-3 py-2" placeholder="TÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â­tulo (ej: WhatsApp)" value={linkTitle} onChange={(e) => setLinkTitle(e.target.value)} />
+                <input className="w-full rounded-xl border px-3 py-2" placeholder="URL (ej: wa.me/58412... ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â³ https://...)" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
+                <button className="rounded-xl border px-4 py-2 text-sm" onClick={addLink}>Agregar link</button>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4">
-              <div>
-                <div className="text-xs font-black text-gray-700 mb-1">Nombre</div>
+            <div className="mt-6 rounded-2xl border p-5 space-y-4">
+              <h2 className="text-lg font-semibold">Productos</h2>
+
+              <div className="grid gap-2">
+                {products.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{p.title}</div>
+                      <div className="text-xs text-neutral-500">
+                        {typeof p.price === "number" ? `$${p.price.toFixed(2)}` : "Sin precio"}
+                        {p.buyUrl ? ` ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Comprar: ${p.buyUrl}` : ""}
+                      </div>
+                    </div>
+                    <button className="text-sm underline" onClick={() => removeProduct(i)}>Quitar</button>
+                  </div>
+                ))}
+                {products.length === 0 ? <div className="text-sm text-neutral-600">no tienes productos.</div> : null}
+              </div>
+
+              <div className="grid gap-2">
+                <input className="w-full rounded-xl border px-3 py-2" placeholder="Producto (ej: Zapatos)" value={prodTitle} onChange={(e) => setProdTitle(e.target.value)} />
+                <input className="w-full rounded-xl border px-3 py-2" placeholder="Precio (opcional) ej: 100" value={prodPrice} onChange={(e) => setProdPrice(e.target.value)} />
+                <input className="w-full rounded-xl border px-3 py-2" placeholder="Buy URL (PayPal/Stripe/WhatsApp) ej: wa.me/..." value={prodBuyUrl} onChange={(e) => setProdBuyUrl(e.target.value)} />
+                <button className="rounded-xl border px-4 py-2 text-sm" onClick={addProduct}>Agregar producto</button>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border p-5 space-y-4">
+              <h2 className="text-lg font-semibold">Tema</h2>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Fondo</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeBg} onChange={(e) => setThemeBg(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Acento</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeAccent} onChange={(e) => setThemeAccent(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Texto</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeText} onChange={(e) => setThemeText(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Texto suave</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeMuted} onChange={(e) => setThemeMuted(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Bot</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeButton} onChange={(e) => setThemeButton(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Texto</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeButtonText} onChange={(e) => setThemeButtonText(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Tarjeta</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeCard} onChange={(e) => setThemeCard(e.target.value)} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Opacidad tarjeta (0-1)</label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    className="w-full rounded-xl border px-3 py-2"
+                    value={themeCardOpacity}
+                    onChange={(e) => setThemeCardOpacity(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={themeUseGradient} onChange={(e) => setThemeUseGradient(e.target.checked)} />
+                Usar degradado (Fondo 2)
+              </label>
+
+              {themeUseGradient ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Fondo 2</label>
+                  <input type="color" className="h-10 w-full rounded-xl border px-2" value={themeBg2} onChange={(e) => setThemeBg2(e.target.value)} />
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Imagen de fondo (URL opcional)</label>
                 <input
-                  value={profile.displayName}
-                  onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
-                  className="w-full rounded-2xl border px-4 py-3 text-sm"
+                  className="w-full rounded-xl border px-3 py-2"
+                  placeholder="https://... (jpg/png)"
+                  value={themeBgImage}
+                  onChange={(e) => setThemeBgImage(e.target.value)}
                 />
+                <div className="text-xs text-neutral-500">
+                  Tip: si pones imagen, baja la opacidad de tarjeta
+                </div>
               </div>
 
-              <div>
-                <div className="text-xs font-black text-gray-700 mb-1">Bio</div>
-                <textarea
-                  value={profile.bio}
-                  onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                  className="w-full rounded-2xl border px-4 py-3 text-sm min-h-[90px]"
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Radio (12-32)</label>
+                <input
+                  type="range"
+                  min="12"
+                  max="32"
+                  value={themeRadius}
+                  onChange={(e) => setThemeRadius(Number(e.target.value))}
+                  className="w-full"
                 />
-              </div>
-
-              <div className="grid gap-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-black text-[#0B1220]">Links</div>
-                  <button
-                    onClick={() =>
-                      setProfile({
-                        ...profile,
-                        links: [
-                          ...profile.links,
-                          { id: newId(), title: "Nuevo link", subtitle: "", url: "https://example.com" },
-                        ],
-                      })
-                    }
-                    className="rounded-xl border px-3 py-2 text-xs font-extrabold"
-                  >
-                    + Añadir
-                  </button>
-                </div>
-
-                {profile.links.map((l, idx) => (
-                  <div key={l.id} className="rounded-2xl border p-4 bg-gray-50">
-                    <div className="grid gap-2 md:grid-cols-3">
-                      <input
-                        value={l.title}
-                        onChange={(e) => {
-                          const links = [...profile.links];
-                          links[idx] = { ...links[idx], title: e.target.value };
-                          setProfile({ ...profile, links });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                        placeholder="Título"
-                      />
-                      <input
-                        value={l.subtitle || ""}
-                        onChange={(e) => {
-                          const links = [...profile.links];
-                          links[idx] = { ...links[idx], subtitle: e.target.value };
-                          setProfile({ ...profile, links });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                        placeholder="Subtítulo"
-                      />
-                      <input
-                        value={l.url}
-                        onChange={(e) => {
-                          const links = [...profile.links];
-                          links[idx] = { ...links[idx], url: e.target.value };
-                          setProfile({ ...profile, links });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                        placeholder="URL"
-                      />
-                    </div>
-
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        onClick={() => {
-                          const links = profile.links.filter((x) => x.id !== l.id);
-                          setProfile({ ...profile, links });
-                        }}
-                        className="text-xs font-extrabold text-red-600 hover:underline"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid gap-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-black text-[#0B1220]">Productos</div>
-                  <button
-                    onClick={() =>
-                      setProfile({
-                        ...profile,
-                        products: [
-                          ...profile.products,
-                          { id: newId(), title: "Nuevo producto", desc: "", price: 10, currency: "USD" },
-                        ],
-                      })
-                    }
-                    className="rounded-xl border px-3 py-2 text-xs font-extrabold"
-                  >
-                    + Añadir
-                  </button>
-                </div>
-
-                {profile.products.map((p, idx) => (
-                  <div key={p.id} className="rounded-2xl border p-4 bg-gray-50">
-                    <div className="grid gap-2 md:grid-cols-4">
-                      <input
-                        value={p.title}
-                        onChange={(e) => {
-                          const products = [...profile.products];
-                          products[idx] = { ...products[idx], title: e.target.value };
-                          setProfile({ ...profile, products });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                        placeholder="Título"
-                      />
-                      <input
-                        value={p.desc || ""}
-                        onChange={(e) => {
-                          const products = [...profile.products];
-                          products[idx] = { ...products[idx], desc: e.target.value };
-                          setProfile({ ...profile, products });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                        placeholder="Descripción"
-                      />
-                      <input
-                        type="number"
-                        value={p.price}
-                        onChange={(e) => {
-                          const products = [...profile.products];
-                          products[idx] = { ...products[idx], price: Number(e.target.value) };
-                          setProfile({ ...profile, products });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                        placeholder="Precio"
-                      />
-                      <select
-                        value={p.currency}
-                        onChange={(e) => {
-                          const products = [...profile.products];
-                          products[idx] = { ...products[idx], currency: e.target.value as any };
-                          setProfile({ ...profile, products });
-                        }}
-                        className="rounded-xl border px-3 py-2 text-sm"
-                      >
-                        <option value="USD">USD</option>
-                        <option value="VES">VES</option>
-                      </select>
-                    </div>
-
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        onClick={() => {
-                          const products = profile.products.filter((x) => x.id !== p.id);
-                          setProfile({ ...profile, products });
-                        }}
-                        className="text-xs font-extrabold text-red-600 hover:underline"
-                      >
-                        Eliminar
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                <div className="text-xs text-neutral-500">Actual: {themeRadius}px</div>
               </div>
             </div>
-          </div>
 
-          {/* Instrucciones rápidas */}
-          <div className="rounded-3xl border bg-white p-6 shadow-sm">
-            <div className="text-sm font-black text-[#0B1220]">Cómo probar</div>
-            <ol className="mt-3 space-y-2 text-sm text-gray-700 list-decimal list-inside">
-              <li>Edita nombre, bio, links o productos.</li>
-              <li>Pulsa <b>Guardar</b>.</li>
-              <li>Abre <b>/u/{username}</b> y refresca.</li>
-              <li>Si quieres volver al demo: <b>Reset</b>.</li>
-            </ol>
-
-            <div className="mt-6 rounded-2xl border bg-gray-50 p-4 text-xs text-gray-600">
-              <b>Siguiente paso:</b> conectar esto a Firebase (Firestore) para que cada usuario guarde su perfil real.
+            <div className="mt-6">
+              <button
+                disabled={busy}
+                onClick={save}
+                className="w-full rounded-xl bg-black py-3 font-medium text-white disabled:opacity-60"
+              >
+                {busy ? "Guardando..." : "Guardar cambios"}
+              </button>
             </div>
-          </div>
-        </div>
+          </>
+        )}
+      </div>
+
+      <div className="mt-10 lg:mt-0 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-24px)] lg:overflow-auto">
+        {username ? <PhonePreview
+  profile={{
+    username: String(username ?? "preview").trim().toLowerCase(),
+    displayName,
+    bio,
+    photoURL: user?.photoURL || "",
+    links,
+    products,
+    theme: {
+      background: themeBgImage.trim()
+        ? `url(${themeBgImage.trim()})`
+        : themeUseGradient
+          ? `linear-gradient(135deg, ${themeBg}, ${themeBg2})`
+          : themeBg,
+      text: themeText,
+      muted: themeMuted,
+      primary: themeButton,
+      buttonText: themeButtonText,
+      card: themeCard,
+      cardOpacity: themeCardOpacity,
+      radius: themeRadius,
+    },
+  }}
+/> : null}
       </div>
     </div>
   );
