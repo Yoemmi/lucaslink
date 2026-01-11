@@ -16,7 +16,7 @@ import Footer from "@/components/ui2/landing/Footer";
 export default function LandingPage() {
   const router = useRouter();
 
-  // ✅ REAL auth routes (Firebase)
+  // Ã¢Å“â€¦ REAL auth routes (Firebase)
   const goLogin = () => router.push("/login");
   const goSignup = () => router.push("/register");
 
@@ -25,11 +25,11 @@ export default function LandingPage() {
       <Ui2Styles />
       <Navbar onLoginClick={goLogin} onSignupClick={goSignup} />
       <main>
-        <Hero onSignupClick={goSignup} />
+        <Hero onSignupClick={goSignup} onStartClick={goSignup} />
         <Trust />
         <Features />
         <HowItWorks />
-        <Pricing onSignupClick={goSignup} />
+        <Pricing onSignupClick={goSignup} onPlanClick={() => goSignup()} />
         <FAQ />
         <CTAFinal onSignupClick={goSignup} onLoginClick={goLogin} />
         <Footer />

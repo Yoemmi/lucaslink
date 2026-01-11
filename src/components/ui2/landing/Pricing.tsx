@@ -12,7 +12,7 @@ interface PricingCardProps {
 
 const PricingCard: React.FC<PricingCardProps> = ({ name, price, features, isPopular, cta, onClick }) => (
   <div className={`p-8 rounded-[32px] border ${isPopular ? 'border-[#11B718] bg-[#0B1220] text-white shadow-2xl scale-105 z-10' : 'border-[#E7EAF2] bg-white text-[#0B1220]'} flex flex-col`}>
-    {isPopular && <div className="bg-[#11B718] text-white text-[10px] font-black uppercase tracking-widest py-1 px-3 rounded-full self-start mb-4">Más popular</div>}
+    {isPopular && <div className="bg-[#11B718] text-white text-[10px] font-black uppercase tracking-widest py-1 px-3 rounded-full self-start mb-4">MÃ¡s popular</div>}
     <h3 className="text-2xl font-bold mb-2">{name}</h3>
     <div className="flex items-baseline mb-8">
       <span className="text-4xl font-black">{price}</span>
@@ -36,7 +36,9 @@ const PricingCard: React.FC<PricingCardProps> = ({ name, price, features, isPopu
 );
 
 interface PricingProps {
-  onPlanClick: () => void;
+  
+  onSignupClick?: () => void;
+onPlanClick: () => void;
 }
 
 const Pricing: React.FC<PricingProps> = ({ onPlanClick }) => {
@@ -53,7 +55,7 @@ const Pricing: React.FC<PricingProps> = ({ onPlanClick }) => {
             price="$0" 
             cta="Empezar ahora"
             onClick={onPlanClick}
-            features={['Enlaces ilimitados', 'Analíticas básicas (7 días)', 'Plantillas básicas', 'Soporte vía email']} 
+            features={['Enlaces ilimitados', 'AnalÃ­ticas bÃ¡sicas (7 dÃ­as)', 'Plantillas bÃ¡sicas', 'Soporte vÃ­a email']} 
           />
           <PricingCard 
             name="Pro" 
@@ -61,14 +63,14 @@ const Pricing: React.FC<PricingProps> = ({ onPlanClick }) => {
             isPopular 
             cta="Obtener Pro"
             onClick={onPlanClick}
-            features={['Sin marca LucasLink', 'Analíticas avanzadas', 'Dominio personalizado', 'Tienda con 0% comisión', 'Soporte prioritario']} 
+            features={['Sin marca LucasLink', 'AnalÃ­ticas avanzadas', 'Dominio personalizado', 'Tienda con 0% comisiÃ³n', 'Soporte prioritario']} 
           />
           <PricingCard 
             name="Business" 
             price="$29" 
             cta="Contactar ventas"
             onClick={onPlanClick}
-            features={['Múltiples páginas', 'Gestión de equipos', 'Webhooks y API', 'Account Manager', 'Contratos personalizados']} 
+            features={['MÃºltiples pÃ¡ginas', 'GestiÃ³n de equipos', 'Webhooks y API', 'Account Manager', 'Contratos personalizados']} 
           />
         </div>
       </div>

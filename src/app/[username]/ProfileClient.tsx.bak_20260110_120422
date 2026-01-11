@@ -1,0 +1,304 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+
+type LinkItem = { title: string; url: string };
+type ProductItem = { title: string; price?: number; buyUrl?: string };
+
+type PublicProfile = {
+  username: string;
+  displayName: string;
+  bio: string;
+  photoURL?: string;
+  published: boolean;
+  links: LinkItem[];
+  products: ProductItem[];
+};
+
+function normalizeUrl(u: string) {
+  const x = (u ?? "").trim();
+  if (!x) return "";
+  if (x.toLowerCase().startsWith("javascript:")) return "";
+  if (x.startsWith("http://") || x.startsWith("https://")) return x;
+  return `https://${x}`;
+}
+
+function pick(obj: any, keys: string[]) {
+  for (const k of keys) {
+    if (obj && typeof obj === "object" && obj[k] != null) return obj[k];
+  }
+  return undefined;
+}
+
+function normalizeProfile(username: string, raw: any): PublicProfile {
+  const displayName =
+    String(pick(raw, ["displayName", "nombre para mostrar", "nombreParaMostrar", "name"]) ?? username).trim() ||
+    username;
+
+  const bio = String(pick(raw, ["bio"]) ?? "").trim();
+  const photoURL = String(pick(raw, ["photoURL", "photoUrl", "URL de la foto"]) ?? "").trim() || undefined;
+  const published = Boolean(pick(raw, ["published", "publicado"]) ?? true);
+
+  const linksRaw = pick(raw, ["links", "enlaces"]) ?? [];
+  const linksArr: any[] = Array.isArray(linksRaw)
+    ? linksRaw
+    : linksRaw && typeof linksRaw === "object"
+      ? Object.values(linksRaw)
+      : [];
+
+  const links: LinkItem[] = linksArr
+    .map((l) => {
+      const title = String(pick(l, ["title", "titulo", "título"]) ?? "").trim();
+      const url = normalizeUrl(String(pick(l, ["url", "URL"]) ?? ""));
+      return { title, url };
+    })
+    .filter((l) => l.title && l.url);
+
+  const productsRaw = pick(raw, ["products", "productos"]) ?? [];
+  const productsArr: any[] = Array.isArray(productsRaw)
+    ? productsRaw
+    : productsRaw && typeof productsRaw === "object"
+      ? Object.values(productsRaw)
+      : [];
+
+  const products: ProductItem[] = productsArr
+    .map((p) => {
+      const title = String(pick(p, ["title", "titulo", "título"]) ?? "").trim();
+      const priceRaw = pick(p, ["price", "precio"]);
+      const price =
+        typeof priceRaw === "number"
+          ? priceRaw
+          : Number.isFinite(Number(priceRaw))
+            ? Number(priceRaw)
+            : undefined;
+
+      const buyUrlRaw = String(pick(p, ["buyUrl", "buyURL", "urlCompra", "url_compra"]) ?? "").trim();
+      const buyUrl = buyUrlRaw ? normalizeUrl(buyUrlRaw) : undefined;
+
+      return { title, price, buyUrl };
+    })
+    .filter((p) => p.title);
+
+  return { username, displayName, bio, photoURL, published, links, products };
+}
+
+async function getProfileDoc(uname: string) {
+  // Primero profiles (inglés)
+  const a = await getDoc(doc(db, "profiles", uname));
+  if (a.exists()) return a;
+
+  // fallback perfiles (español)
+  const b = await getDoc(doc(db, "perfiles", uname));
+  return b;
+}
+
+function formatUSD(n?: number) {
+  if (typeof n !== "number") return "Precio: consultar";
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  } catch {
+    return `$ ${n.toFixed(2)}`;
+  }
+}
+
+export default function ProfileClient({ username }: { username: string }) {
+  const uname = useMemo(() => String(username || "").trim().toLowerCase(), [username]);
+
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        setError(null);
+
+        if (!uname) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        setLoading(true);
+        const snap = await getProfileDoc(uname);
+
+        if (!alive) return;
+
+        if (!snap.exists()) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        setProfile(normalizeProfile(uname, snap.data()));
+        setLoading(false);
+      } catch (e: any) {
+        if (!alive) return;
+        setError(e?.message || String(e));
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [uname]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="mx-auto max-w-xl px-4 py-16 text-sm text-neutral-600">Cargando perfil…</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="mx-auto max-w-xl px-4 py-16">
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile || !profile.published) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+        <div className="mx-auto max-w-xl px-4 py-16">
+          <div className="rounded-3xl border bg-white p-6 shadow-sm">
+            <div className="text-xl font-bold">Perfil no encontrado</div>
+            <div className="mt-2 text-sm text-neutral-600">Revisa tu nombre de usuario o crea tu perfil desde el panel.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const initial = (profile.displayName?.trim()?.[0] || profile.username?.[0] || "?").toUpperCase();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="mx-auto max-w-xl px-4 py-10">
+        {/* Header Card */}
+        <div className="relative overflow-hidden rounded-3xl border border-emerald-100 bg-white/80 p-6 shadow-sm backdrop-blur">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(17,183,24,0.12),transparent_55%)]" />
+
+          <div className="relative flex items-center gap-4">
+            <div className="relative">
+              <div className="h-16 w-16 overflow-hidden rounded-full bg-emerald-100 ring-4 ring-white">
+                {profile.photoURL ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={profile.photoURL} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-lg font-bold text-emerald-900">
+                    {initial}
+                  </div>
+                )}
+              </div>
+
+              <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-[#11b718] ring-2 ring-white" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-2xl font-extrabold tracking-tight text-neutral-900">
+                {profile.displayName}
+              </h1>
+              <p className="mt-1 text-sm text-neutral-600">@{profile.username}</p>
+            </div>
+          </div>
+
+          {profile.bio ? (
+            <p className="relative mt-4 whitespace-pre-wrap text-sm leading-relaxed text-neutral-700">
+              {profile.bio}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Links */}
+        <div className="mt-8">
+          <div className="flex items-end justify-between">
+            <h2 className="text-base font-semibold text-neutral-900">Enlaces</h2>
+            <span className="text-xs text-neutral-500">{profile.links.length}</span>
+          </div>
+
+          {profile.links.length === 0 ? (
+            <div className="mt-3 rounded-2xl border bg-white p-4 text-sm text-neutral-600 shadow-sm">
+              Este perfil todavía no tiene enlaces.
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-3">
+              {profile.links.map((l, idx) => (
+                <a
+                  key={idx}
+                  href={l.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group flex items-center justify-between rounded-2xl border bg-white p-4 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-neutral-900">{l.title}</div>
+                    <div className="mt-1 truncate text-xs text-neutral-500">{l.url}</div>
+                  </div>
+                  <span className="ml-3 inline-flex h-9 w-9 items-center justify-center rounded-xl border bg-neutral-50 text-neutral-400 transition group-hover:text-neutral-700">
+                    →
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Shop */}
+        <div className="mt-10">
+          <div className="flex items-end justify-between">
+            <h2 className="text-base font-semibold text-neutral-900">Tienda</h2>
+            <span className="text-xs text-neutral-500">{profile.products.length}</span>
+          </div>
+
+          {profile.products.length === 0 ? (
+            <div className="mt-3 rounded-2xl border bg-white p-4 text-sm text-neutral-600 shadow-sm">
+              Este perfil todavía no tiene productos.
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {profile.products.map((p, idx) => (
+                <div key={idx} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="font-semibold text-neutral-900">{p.title}</div>
+
+                  <div className="mt-2 inline-flex items-center rounded-xl bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-900">
+                    {formatUSD(p.price)}
+                  </div>
+
+                  {p.buyUrl ? (
+                    <a
+                      href={p.buyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[#11b718] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 active:translate-y-[1px]"
+                    >
+                      Comprar
+                    </a>
+                  ) : (
+                    <div className="mt-4 rounded-xl border bg-neutral-50 p-3 text-xs text-neutral-600">
+                      Sin link de pago. Agrega un <span className="font-medium">Buy URL</span> en tu Dashboard.
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-10 text-center text-xs text-neutral-500">
+          Hecho con <span className="font-medium text-neutral-700">LucasLink</span>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -2,7 +2,9 @@
 import React from 'react';
 
 interface HeroProps {
-  onStartClick: () => void;
+  
+  onSignupClick?: () => void;
+onStartClick: () => void;
 }
 
 const Hero: React.FC<HeroProps> = ({ onStartClick }) => {
@@ -13,14 +15,14 @@ const Hero: React.FC<HeroProps> = ({ onStartClick }) => {
           {/* Contenido de Texto */}
           <div className="text-center lg:text-left order-2 lg:order-1">
             <div className="inline-flex items-center px-4 py-2 rounded-full bg-[#11B718]/10 text-[#11B718] text-sm font-bold mb-6">
-              ✨ El link número #1 para creadores
+              âœ¨ El link nÃºmero #1 para creadores
             </div>
             <h1 className="text-5xl md:text-7xl font-extrabold text-[#0B1220] leading-[1.1] mb-6">
               Tu mundo en un <br />
               <span className="text-[#11B718]">solo enlace.</span>
             </h1>
             <p className="text-lg md:text-xl text-gray-500 max-w-xl mx-auto lg:mx-0 mb-10 leading-relaxed">
-              Convierte seguidores en clientes. Crea una página personalizada en segundos para compartir tus links, vender productos y recibir pagos con LucasLink.
+              Convierte seguidores en clientes. Crea una pÃ¡gina personalizada en segundos para compartir tus links, vender productos y recibir pagos con LucasLink.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <button 
@@ -43,12 +45,12 @@ const Hero: React.FC<HeroProps> = ({ onStartClick }) => {
                 ))}
               </div>
               <p className="text-sm font-medium text-gray-500">
-                <span className="text-[#0B1220] font-bold">+20k creadores</span> ya confían en nosotros
+                <span className="text-[#0B1220] font-bold">+20k creadores</span> ya confÃ­an en nosotros
               </p>
             </div>
           </div>
 
-          {/* Previsualización del Teléfono Mejorada */}
+          {/* PrevisualizaciÃ³n del TelÃ©fono Mejorada */}
           <div className="relative flex justify-center lg:justify-end order-1 lg:order-2">
             {/* Efectos de fondo */}
             <div className="absolute -z-10 w-[500px] h-[500px] bg-[#11B718]/10 rounded-full blur-[100px] top-1/2 -translate-y-1/2"></div>
@@ -78,7 +80,7 @@ const Hero: React.FC<HeroProps> = ({ onStartClick }) => {
                </div>
             </div>
             
-            {/* Marco del Teléfono */}
+            {/* Marco del TelÃ©fono */}
             <div className="relative w-[310px] md:w-[350px] h-[630px] md:h-[710px] bg-[#1a1a1a] rounded-[55px] p-[10px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] border-[1px] border-white/10 ring-4 ring-[#2a2a2a]">
               <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[110px] h-[34px] bg-[#000] rounded-[20px] z-30 flex items-center justify-center border border-white/5">
                  <div className="w-2 h-2 bg-blue-500/20 rounded-full absolute right-4"></div>
