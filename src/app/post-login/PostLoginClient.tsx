@@ -9,7 +9,7 @@ import {
   browserSessionPersistence,
   inMemoryPersistence,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase.";
+import { auth } from "@/lib/firebase";
 
 const DASH_FALLBACK = "/ui3/dashboard";
 
