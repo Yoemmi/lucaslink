@@ -9,7 +9,7 @@ import {
   browserSessionPersistence,
   inMemoryPersistence,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.";
 
 const DASH_FALLBACK = "/ui3/dashboard";
 
@@ -26,7 +26,7 @@ export default function PostLoginClient() {
     const next = sp.get("next") || DASH_FALLBACK;
 
     (async () => {
-      // 1) Persistencia: local -> session -> memory (para incognito / bloqueos)
+      // Persistencia: local -> session -> memory (incognito)
       try {
         await setPersistence(auth, browserLocalPersistence);
       } catch (e1) {
@@ -37,15 +37,14 @@ export default function PostLoginClient() {
         }
       }
 
-      // 2) Gate: esperar el estado real de Auth antes de redirigir
       setMsg("Cargando tu sesión...");
+
       const unsub = onAuthStateChanged(auth, (user) => {
         unsub();
-
         if (user) {
           router.replace(next);
         } else {
-          router.replace(/login?next=\);
+          router.replace(`/login?next=${encodeURIComponent(next)}`);
         }
       });
     })();
