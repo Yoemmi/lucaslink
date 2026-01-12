@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter, useSearchParams } from "next/navigation";
-import { auth } from "@/lib/firebase.";
+import { auth } from "@/lib/firebase";
 
 export default function PostLogin() {
   const router = useRouter();
