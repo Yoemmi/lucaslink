@@ -16,7 +16,7 @@ export default function Login2Page() {
         onSwitchMode={(m) => {
           if (m === "signup") router.push("/ui/register2");
         }}
-        onLoginSuccess={() => router.push("/ui/dashboard2")}
+        onLoginSuccess={() => router.replace("/post-login?next=" + encodeURIComponent("/ui/dashboard2"))}
       />
     </div>
   );

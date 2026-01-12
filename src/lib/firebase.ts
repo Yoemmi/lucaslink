@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -15,6 +15,11 @@ const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
+
+// FIX incógnito: persistencia por sesión (no depende de localStorage)
+if (typeof window !== "undefined") {
+  setPersistence(auth, browserSessionPersistence).catch(() => {});
+}
 // ✅ Usa la base "lucaslink" si está definida; si no, cae a (default)
 const databaseId = process.env.NEXT_PUBLIC_FIREBASE_DATABASE_ID;
 export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
